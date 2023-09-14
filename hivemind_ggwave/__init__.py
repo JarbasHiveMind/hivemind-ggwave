@@ -75,15 +75,22 @@ class GGWaveMaster(Thread):
     """ run on hivemind-core device
     when loading this class share self.bus to react to events if needed
     eg, start/stop on demand
+
+    if in silent mode the password is assumed to be transmited out of band
+    might be a string emitted by the user with another ggwave implementation
     """
-    def __init__(self, bus=None, host=None, config=None):
+    def __init__(self, bus=None, pswd=None, host=None, silent_mode=False, config=None):
         super().__init__()
         self.bus = bus or FakeBus()
-        self.host = host or get_ip()
-        self.pswd = None
+        self.host = host
+        self.pswd = pswd
         self.rx = GGWave(config)
         self.rx.handle_key = self.handle_key
+        self.rx.handle_pswd = self.handle_pswd
         self.running = False
+        # if in silent mode the password is assumed to be transmited out of band
+        # might be a string emited by the user with another ggwave implementation
+        self.silent_mode = silent_mode
 
     def add_client(self, access_key):
 
@@ -115,13 +122,20 @@ class GGWaveMaster(Thread):
                                "name": name}))
 
     def run(self):
-        self.pswd = os.urandom(8).hex()
+        self.pswd = self.pswd or os.urandom(8).hex()
+        self.host = self.host or get_ip()
         self.running = True
         self.bus.emit(Message("hm.ggwave.activated"))
         while self.running:
             time.sleep(3)
-            self.rx.emit(f"HMPSWD:{self.pswd}")
-            self.bus.emit(Message("hm.ggwave.pswd_emitted"))
+            if not self.silent_mode:
+                self.rx.emit(f"HMPSWD:{self.pswd}")
+                self.bus.emit(Message("hm.ggwave.pswd_emitted"))
+
+    def handle_pswd(self, payload):
+        # password shared out of band, silent_mode trigger
+        if not self.running and payload == self.pswd:
+            self.start()
 
     def stop(self):
         self.running = False
