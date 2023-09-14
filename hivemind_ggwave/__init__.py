@@ -1,13 +1,16 @@
-from os.path import isfile, expanduser
 import os
-import pexpect
+import time
 from distutils.spawn import find_executable
-from ovos_utils import create_daemon
+from os.path import isfile, expanduser
+from threading import Thread
+
+import pexpect
 from hivemind_bus_client.identity import NodeIdentity
+from ovos_utils.messagebus import FakeBus, Message
+from ovos_utils.network_utils import get_ip
 
 
-class HMGGwaveRx:
-    daemon = None
+class GGWave(Thread):
     """
     - master emits a password via ggwave (periodically until an access key is received)
     - devices wanting to connect grab password, generate an access key and send it via ggwave
@@ -16,6 +19,7 @@ class HMGGwaveRx:
     """
 
     def __init__(self, config=None):
+        super().__init__(daemon=True)
         self.config = config or {}
         self.binpath = self.config.get("binary") or \
                        find_executable("ggwave-rx") or \
@@ -28,9 +32,8 @@ class HMGGwaveRx:
             "HMKEY:": self.handle_key,
             "HMHOST:": self.handle_host
         }
-        self.daemon = self.daemon or create_daemon(self.monitor_thread)
 
-    def monitor_thread(self):
+    def run(self):
         child = pexpect.spawn(self.binpath)
         marker = "Received sound data successfully: "
         while True:
@@ -64,11 +67,21 @@ class HMGGwaveRx:
     def handle_pswd(self, payload):
         pass
 
+    def emit(self, payload):
+        print("TODO emit", payload)
 
-class GGWaveMaster:
-    def __init__(self, config=None):
+
+class GGWaveMaster(Thread):
+    """ run on hivemind-core device
+    when loading this class share self.bus to react to events if needed
+    eg, start/stop on demand
+    """
+    def __init__(self, bus=None, host=None, config=None):
+        super().__init__()
+        self.bus = bus or FakeBus()
+        self.host = host or get_ip()
         self.pswd = None
-        self.rx = HMGGwaveRx(config)
+        self.rx = GGWave(config)
         self.rx.handle_key = self.handle_key
         self.running = False
 
@@ -95,53 +108,76 @@ class GGWaveMaster:
 
             print("WARNING: Encryption Key is deprecated, only use if your client does not support password")
 
-    def start(self):
+        self.bus.emit(Message("hm.ggwave.client_registered",
+                              {"key": access_key,
+                               "pswd": self.pswd,
+                               "id": node_id,
+                               "name": name}))
+
+    def run(self):
         self.pswd = os.urandom(8).hex()
         self.running = True
+        self.bus.emit(Message("hm.ggwave.activated"))
+        while self.running:
+            time.sleep(3)
+            self.rx.emit(f"HMPSWD:{self.pswd}")
+            self.bus.emit(Message("hm.ggwave.pswd_emitted"))
 
     def stop(self):
         self.running = False
+        self.bus.emit(Message("hm.ggwave.deactivated"))
 
     def handle_key(self, payload):
         if self.running:
+            self.bus.emit(Message("hm.ggwave.key_received"))
             self.add_client(payload)
-            # TODO emit host
+            self.rx.emit(f"HMHOST:{self.host}")
+            self.bus.emit(Message("hm.ggwave.host_emitted"))
 
 
 class GGWaveSlave:
-    def __init__(self, config=None):
+    """ run on satellite devices
+    when loading this class share self.bus to react to events if needed,
+    eg connect once entity created """
+    def __init__(self, bus=None, config=None):
+        self.bus = bus or FakeBus()
         self.pswd = None
-        self.host = None
+        self.key = None
         self.running = False
-        self.rx = HMGGwaveRx(config)
+        self.rx = GGWave(config)
         self.rx.handle_pswd = self.handle_pswd
         self.rx.handle_host = self.handle_host
 
     def start(self):
         self.running = True
         self.key = os.urandom(8).hex()
+        self.bus.emit(Message("hm.ggwave.activated"))
 
     def stop(self):
         self.running = False
-        self.host = None
         self.pswd = None
         self.key = None
+        self.bus.emit(Message("hm.ggwave.deactivated"))
 
     def handle_pswd(self, payload):
         if self.running:
             self.pswd = payload
-            # TODO - emit key
+            self.bus.emit(Message("hm.ggwave.pswd_received"))
+            self.rx.emit(f"HMKEY:{self.key}")
+            self.bus.emit(Message("hm.ggwave.key_emitted"))
 
     def handle_host(self, payload):
         if self.running:
-            self.host = payload
-            if self.host and self.pswd and self.key:
+            host = payload
+            self.bus.emit(Message("hm.ggwave.host_received"))
+            if host and self.pswd and self.key:
                 identity = NodeIdentity()
                 identity.password = self.pswd
                 identity.access_key = self.key
-                if not self.host.startswith("ws://") and not self.host.startswith("wss://"):
-                    self.host = "ws://" + self.host
-                identity.default_master = self.host
+                if not host.startswith("ws://") and not host.startswith("wss://"):
+                    host = "ws://" + host
+                identity.default_master = host
                 identity.save()
                 print(f"identity saved: {identity.IDENTITY_FILE.path}")
+                self.bus.emit(Message("hm.ggwave.identity_updated"))
                 self.stop()
