@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en-us">
+<head>
+    <title>Hey HiveMind</title>
+    <meta name="description" content="Web app to connect HiveMind devices through sound for OpenVoiceOS devices">
+
+</head>
+<body>
+<div id="main-container">
+    <h1>
+        <a href="https://github.com/JarbasHiveMind/">
+        <img src="https://github.com/JarbasHiveMind/HiveMind-assets/blob/master/logo/hivemind-128.png?raw=true" id="logo"></img>
+    </a>
+
+    </h1>
+
+    Hey <b>HiveMind</b>, pair a satellite device!
+
+    <br><br>
+
+
+    <form class="pure-form pure-form-stacked pure-u-1-2" onsubmit="return false">
+        <input class="pure-u-1-1" id="txData" autocomplete="off" type="text" placeholder="HiveMind Code">
+        <button onclick="onSend();" id="broadcast"
+                class="pure-u-1-1 pure-button pure-button-primary">BROADCAST
+        </button>
+
+    </form>
+    <br><br>
+</div>
+
+<div class="footer">
+    <br>&copy; 2023 JarbasHiveMind
+</div>
+
+
+<script type="text/javascript" src="js/ggwave.js"></script>
+<script type='text/javascript'>
+    window.AudioContext = window.AudioContext || window.webkitAudioContext;
+    window.OfflineAudioContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+
+    var context = null;
+
+    // the ggwave module instance
+    var ggwave = null;
+    var parameters = null;
+    var instance = null;
+
+    // instantiate the ggwave instance
+    // ggwave_factory comes from the ggwave.js module
+    ggwave_factory().then(function(obj) {
+        ggwave = obj;
+    });
+
+    var txData = document.getElementById("txData");
+
+    // helper function
+    function convertTypedArray(src, type) {
+        var buffer = new ArrayBuffer(src.byteLength);
+        var baseView = new src.constructor(buffer).set(src);
+        return new type(buffer);
+    }
+
+    // initialize audio context and ggwave
+    function init() {
+        if (!context) {
+            context = new AudioContext({sampleRate: 48000});
+
+            parameters = ggwave.getDefaultParameters();
+            parameters.sampleRateInp = context.sampleRate;
+            parameters.sampleRateOut = context.sampleRate;
+            instance = ggwave.init(parameters);
+        }
+    }
+
+    //
+    // Tx
+    //
+
+    function onSend() {
+        init();
+
+        // generate audio waveform
+        var waveform = ggwave.encode(instance, txData.value, ggwave.ProtocolId.GGWAVE_PROTOCOL_AUDIBLE_FAST, 10)
+
+        // play audio
+        var buf = convertTypedArray(waveform, Float32Array);
+        var buffer = context.createBuffer(1, buf.length, context.sampleRate);
+        buffer.getChannelData(0).set(buf);
+        var source = context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(context.destination);
+        source.start(0);
+    }
+
+
+</script>
+</body>
+</html>
