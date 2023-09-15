@@ -10,7 +10,7 @@ Data over sound for HiveMind
 pre-requisites:
 - a device with a browser, eg a phone
 - a hivemind-core device with mic and speaker, eg a mark2
-- a voice satellite device with mic and speaker, eg a raspberry pi
+- a (unpaired) voice satellite device with mic and speaker, eg a raspberry pi
 - all devices need to be in audible range, they each need to be able to listen to sounds emitted by each other
 
 workflow:
