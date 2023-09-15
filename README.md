@@ -2,16 +2,14 @@
 
 Data over sound for HiveMind
 
+- manually exchanged string [via browser](https://jarbashivemind.github.io/hivemind-ggwave/)
+- with a [talking button](https://github.com/ggerganov/ggwave/discussions/27)
+
 ## Enrolling clients
 
-- master emits a password via ggwave (periodically until an access key is received)
-- devices wanting to connect grab password, generate an access key and send it via ggwave
+- when launching hivemind-core take note of the provided code, eg `HMPSWD:ce357a6b59f6b1f9`
+- go to https://jarbashivemind.github.io/hivemind-ggwave and emit the code from any device in audible range of your satellite
+- the voice satellite will decode the password, generate an access key and send it back via ggwave
 - master adds a client with key + password, send an ack (containing host) via ggwave
-- slave devices get the ack then connect to received host
+- satellite devices get the ack then connect to received host
 
-## out of band password emit
-
-set password manually and enable silent mode (if silent mode is disabled the pswd is emitted evey 3 seconds)
-
-- manually exchanged string [via browser](https://ggwave-js.ggerganov.com/)
-- with a [talking button](https://github.com/ggerganov/ggwave/discussions/27)
