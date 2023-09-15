@@ -1,5 +1,9 @@
 # Changelog
 
+## [V0.0.0a0](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.0a0) (2023-09-15)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.0a4...V0.0.0a0)
+
 ## [V0.0.0a4](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.0a4) (2023-09-15)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.0a3...V0.0.0a4)
