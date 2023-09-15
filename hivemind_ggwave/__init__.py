@@ -29,21 +29,23 @@ class GGWave(Thread):
         self.rx = self.config.get("ggwave-rx") or \
                   find_executable("ggwave-rx") or \
                   expanduser("~/.local/bin/ggwave-rx")
-        self.tx = self.config.get("ggwave-to-file") or \
-                  find_executable("ggwave-to-file") or \
-                  expanduser("~/.local/bin/ggwave-to-file")
+        self.tx = self.config.get("ggwave-cli") or \
+                  find_executable("ggwave-cli") or \
+                  expanduser("~/.local/bin/ggwave-cli")
         if not isfile(self.rx):
             raise ValueError(f"ggwave-rx not found in {self.rx}, "
                              f"please install from https://github.com/ggerganov/ggwave")
-        if not isfile(self.tx):
-            LOG.warning(f"ggwave-to-file not found in {self.tx}, online service will be used"
-                        f"please install from https://github.com/ggerganov/ggwave")
+
         self.OPCODES = {
             "HMPSWD:": self.handle_pswd,
             "HMKEY:": self.handle_key,
             "HMHOST:": self.handle_host
         }
         self.running = False
+        self.remote = self.config.get("remote", False)
+        if not isfile(self.tx):
+            LOG.warning("ggwave-cli not found, forcing remote usage")
+            self.remote = True
 
     def stop(self):
         self.running = False
@@ -63,16 +65,17 @@ class GGWave(Thread):
                             handler(p)
                             break
                     else:
-                        print(f"invalid ggwave payload: {payload}")
+                       LOG.error(f"invalid ggwave payload: {payload}")
             except pexpect.exceptions.EOF:
                 # exited
-                print("Exited ggwave-rx process")
+                LOG.debug("Exited ggwave-rx process")
                 break
             except pexpect.exceptions.TIMEOUT:
                 # nothing happened for a while
                 pass
             except KeyboardInterrupt:
                 break
+        child.close(True)
 
     def handle_host(self, payload):
         pass
@@ -84,10 +87,18 @@ class GGWave(Thread):
         pass
 
     def emit(self, payload):
-        tmp = get_temp_path("ggwave")
-        wav = self.encode2wave(payload,
-                               f'{tmp}/{payload.replace(":", "_").replace("/", "_")}.wav')
-        play_audio(wav).wait()
+        if self.remote:
+            tmp = get_temp_path("ggwave")
+            wav = self.encode2wave(payload,
+                                   f'{tmp}/{payload.replace(":", "_").replace("/", "_")}.wav')
+            play_audio(wav).wait()
+        else:
+            p = pexpect.spawn(f"{self.tx}")
+            p.expect("Enter text:")
+            p.sendline(payload)
+            p.expect("Enter text:")
+            time.sleep(5)
+            p.close(True)
 
     def encode2wave(self, message: str,
                     wav_path: str,
@@ -96,13 +107,7 @@ class GGWave(Thread):
                     volume: int = 50,
                     payloadLength: int = -1,
                     useDSS: int = 0):
-
-        # TODO - attempt to use binary if available
-        if self.tx:
-            pass
-
         url = 'https://ggwave-to-file.ggerganov.com/'
-
         params = {
             'm': message,  # message to encode
             'p': protocolId,  # transmission protocol to use
@@ -113,7 +118,6 @@ class GGWave(Thread):
         }
 
         response = requests.get(url, params=params)
-
         if response == '' or b'Usage: ggwave-to-file' in response.content:
             raise SyntaxError('Request failed')
 
@@ -163,14 +167,7 @@ class GGWaveMaster(Thread):
             user = db.get_client_by_api_key(access_key)
             node_id = db.get_item_id(user)
 
-            print("Credentials added to database!\n")
-            print("Node ID:", node_id)
-            print("Friendly Name:", name)
-            print("Access Key:", access_key)
-            print("Password:", self.pswd)
-            print("Encryption Key:", key)
-
-            print("WARNING: Encryption Key is deprecated, only use if your client does not support password")
+            LOG.info(f"Credentials added to database! {access_key}")
 
         self.bus.emit(Message("hm.ggwave.client_registered",
                               {"key": access_key,
@@ -251,6 +248,6 @@ class GGWaveSlave:
                     host = "ws://" + host
                 identity.default_master = host
                 identity.save()
-                print(f"identity saved: {identity.IDENTITY_FILE.path}")
+                LOG.info(f"identity saved: {identity.IDENTITY_FILE.path}")
                 self.bus.emit(Message("hm.ggwave.identity_updated"))
                 self.stop()
