@@ -95,7 +95,7 @@ class GGWave(Thread):
         else:
             p = pexpect.spawn(f"{self.tx}")
             p.expect("Enter text:")
-            p.sendline(payload)
+            p.sendline(payload + "\n")
             p.expect("Enter text:")
             time.sleep(5)
             p.close(True)
@@ -139,16 +139,14 @@ class GGWaveMaster(Thread):
     """
 
     def __init__(self, bus=None, pswd=None, host=None, silent_mode=False, config=None):
-        super().__init__()
+        super().__init__(daemon=True)
         self.bus = bus or FakeBus()
         self.host = host
         self.pswd = pswd
         self.ggwave = GGWave(config)
         self.ggwave.handle_key = self.handle_key
         self.ggwave.handle_pswd = self.handle_pswd
-        self.ggwave.start()
 
-        self.running = False
         # if in silent mode the password is assumed to be transmited out of band
         # might be a string emited by the user with another ggwave implementation
         self.silent_mode = silent_mode
@@ -176,11 +174,11 @@ class GGWaveMaster(Thread):
                                "name": name}))
 
     def run(self):
+        self.ggwave.start()
         self.pswd = self.pswd or os.urandom(8).hex()
         self.host = self.host or get_ip()
-        self.running = True
         self.bus.emit(Message("hm.ggwave.activated"))
-        while self.running:
+        while self.ggwave.running:
             time.sleep(3)
             if not self.silent_mode:
                 self.ggwave.emit(f"HMPSWD:{self.pswd}")
@@ -188,15 +186,15 @@ class GGWaveMaster(Thread):
 
     def handle_pswd(self, payload):
         # password shared out of band, silent_mode trigger
-        if not self.running and payload == self.pswd:
+        if not self.ggwave.running and payload == self.pswd:
             self.start()
 
     def stop(self):
-        self.running = False
+        self.ggwave.stop()
         self.bus.emit(Message("hm.ggwave.deactivated"))
 
     def handle_key(self, payload):
-        if self.running:
+        if self.ggwave.running:
             self.bus.emit(Message("hm.ggwave.key_received"))
             self.add_client(payload)
             self.ggwave.emit(f"HMHOST:{self.host}")
@@ -208,36 +206,33 @@ class GGWaveSlave:
     when loading this class share self.bus to react to events if needed,
     eg connect once entity created """
 
-    def __init__(self, bus=None, config=None):
+    def __init__(self, key=None, bus=None, config=None):
         self.bus = bus or FakeBus()
         self.pswd = None
-        self.key = None
-        self.running = False
+        self.key = key or os.urandom(8).hex()
         self.ggwave = GGWave(config)
         self.ggwave.handle_pswd = self.handle_pswd
         self.ggwave.handle_host = self.handle_host
-        self.ggwave.start()
 
     def start(self):
-        self.running = True
-        self.key = os.urandom(8).hex()
+        self.ggwave.start()
         self.bus.emit(Message("hm.ggwave.activated"))
 
     def stop(self):
-        self.running = False
+        self.ggwave.stop()
         self.pswd = None
         self.key = None
         self.bus.emit(Message("hm.ggwave.deactivated"))
 
     def handle_pswd(self, payload):
-        if self.running:
+        if self.ggwave.running:
             self.pswd = payload
             self.bus.emit(Message("hm.ggwave.pswd_received"))
             self.ggwave.emit(f"HMKEY:{self.key}")
             self.bus.emit(Message("hm.ggwave.key_emitted"))
 
     def handle_host(self, payload):
-        if self.running:
+        if self.ggwave.running:
             host = payload
             self.bus.emit(Message("hm.ggwave.host_received"))
             if host and self.pswd and self.key:
