@@ -1,13 +1,18 @@
 import os
 import time
+import wave
 from distutils.spawn import find_executable
 from os.path import isfile, expanduser
 from threading import Thread
 
 import pexpect
+import requests
 from hivemind_bus_client.identity import NodeIdentity
+from ovos_utils.file_utils import get_temp_path
+from ovos_utils.log import LOG
 from ovos_utils.messagebus import FakeBus, Message
 from ovos_utils.network_utils import get_ip
+from ovos_utils.sound import play_audio
 
 
 class GGWave(Thread):
@@ -21,22 +26,33 @@ class GGWave(Thread):
     def __init__(self, config=None):
         super().__init__(daemon=True)
         self.config = config or {}
-        self.binpath = self.config.get("binary") or \
-                       find_executable("ggwave-rx") or \
-                       expanduser("~/.local/bin/ggwave-rx")
-        if not isfile(self.binpath):
-            raise ValueError(f"ggwave-rx not found in {self.binpath}, "
+        self.rx = self.config.get("ggwave-rx") or \
+                  find_executable("ggwave-rx") or \
+                  expanduser("~/.local/bin/ggwave-rx")
+        self.tx = self.config.get("ggwave-to-file") or \
+                  find_executable("ggwave-to-file") or \
+                  expanduser("~/.local/bin/ggwave-to-file")
+        if not isfile(self.rx):
+            raise ValueError(f"ggwave-rx not found in {self.rx}, "
                              f"please install from https://github.com/ggerganov/ggwave")
+        if not isfile(self.tx):
+            LOG.warning(f"ggwave-to-file not found in {self.tx}, online service will be used"
+                        f"please install from https://github.com/ggerganov/ggwave")
         self.OPCODES = {
             "HMPSWD:": self.handle_pswd,
             "HMKEY:": self.handle_key,
             "HMHOST:": self.handle_host
         }
+        self.running = False
+
+    def stop(self):
+        self.running = False
 
     def run(self):
-        child = pexpect.spawn(self.binpath)
+        self.running = True
+        child = pexpect.spawn(self.rx)
         marker = "Received sound data successfully: "
-        while True:
+        while self.running:
             try:
                 txt = child.readline().decode("utf-8").strip()
                 if txt.startswith(marker):
@@ -68,7 +84,45 @@ class GGWave(Thread):
         pass
 
     def emit(self, payload):
-        print("TODO emit", payload)
+        tmp = get_temp_path("ggwave")
+        wav = self.encode2wave(payload,
+                               f'{tmp}/{payload.replace(":", "_").replace("/", "_")}.wav')
+        play_audio(wav).wait()
+
+    def encode2wave(self, message: str,
+                    wav_path: str,
+                    protocolId: int = 1,
+                    sampleRate: float = 48000,
+                    volume: int = 50,
+                    payloadLength: int = -1,
+                    useDSS: int = 0):
+
+        # TODO - attempt to use binary if available
+        if self.tx:
+            pass
+
+        url = 'https://ggwave-to-file.ggerganov.com/'
+
+        params = {
+            'm': message,  # message to encode
+            'p': protocolId,  # transmission protocol to use
+            's': sampleRate,  # output sample rate
+            'v': volume,  # output volume
+            'l': payloadLength,  # if positive - use fixed-length encoding
+            'd': useDSS,  # if positive - use DSS
+        }
+
+        response = requests.get(url, params=params)
+
+        if response == '' or b'Usage: ggwave-to-file' in response.content:
+            raise SyntaxError('Request failed')
+
+        with wave.open(wav_path, 'wb') as f:
+            f.setnchannels(1)
+            f.setframerate(sampleRate)
+            f.setsampwidth(2)
+            f.writeframes(response.content)
+        return wav_path
 
 
 class GGWaveMaster(Thread):
@@ -79,14 +133,17 @@ class GGWaveMaster(Thread):
     if in silent mode the password is assumed to be transmited out of band
     might be a string emitted by the user with another ggwave implementation
     """
+
     def __init__(self, bus=None, pswd=None, host=None, silent_mode=False, config=None):
         super().__init__()
         self.bus = bus or FakeBus()
         self.host = host
         self.pswd = pswd
-        self.rx = GGWave(config)
-        self.rx.handle_key = self.handle_key
-        self.rx.handle_pswd = self.handle_pswd
+        self.ggwave = GGWave(config)
+        self.ggwave.handle_key = self.handle_key
+        self.ggwave.handle_pswd = self.handle_pswd
+        self.ggwave.start()
+
         self.running = False
         # if in silent mode the password is assumed to be transmited out of band
         # might be a string emited by the user with another ggwave implementation
@@ -129,7 +186,7 @@ class GGWaveMaster(Thread):
         while self.running:
             time.sleep(3)
             if not self.silent_mode:
-                self.rx.emit(f"HMPSWD:{self.pswd}")
+                self.ggwave.emit(f"HMPSWD:{self.pswd}")
                 self.bus.emit(Message("hm.ggwave.pswd_emitted"))
 
     def handle_pswd(self, payload):
@@ -145,7 +202,7 @@ class GGWaveMaster(Thread):
         if self.running:
             self.bus.emit(Message("hm.ggwave.key_received"))
             self.add_client(payload)
-            self.rx.emit(f"HMHOST:{self.host}")
+            self.ggwave.emit(f"HMHOST:{self.host}")
             self.bus.emit(Message("hm.ggwave.host_emitted"))
 
 
@@ -153,14 +210,16 @@ class GGWaveSlave:
     """ run on satellite devices
     when loading this class share self.bus to react to events if needed,
     eg connect once entity created """
+
     def __init__(self, bus=None, config=None):
         self.bus = bus or FakeBus()
         self.pswd = None
         self.key = None
         self.running = False
-        self.rx = GGWave(config)
-        self.rx.handle_pswd = self.handle_pswd
-        self.rx.handle_host = self.handle_host
+        self.ggwave = GGWave(config)
+        self.ggwave.handle_pswd = self.handle_pswd
+        self.ggwave.handle_host = self.handle_host
+        self.ggwave.start()
 
     def start(self):
         self.running = True
@@ -177,7 +236,7 @@ class GGWaveSlave:
         if self.running:
             self.pswd = payload
             self.bus.emit(Message("hm.ggwave.pswd_received"))
-            self.rx.emit(f"HMKEY:{self.key}")
+            self.ggwave.emit(f"HMKEY:{self.key}")
             self.bus.emit(Message("hm.ggwave.key_emitted"))
 
     def handle_host(self, payload):
