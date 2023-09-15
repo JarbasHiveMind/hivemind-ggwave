@@ -23,9 +23,10 @@ class GGWave(Thread):
     - slave devices keep emitting message until they get the ack (then connect to received host)
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, callbacks=None, debug=False):
         super().__init__(daemon=True)
         self.config = config or {}
+        self.debug = debug
         self.rx = self.config.get("ggwave-rx") or \
                   find_executable("ggwave-rx") or \
                   expanduser("~/.local/bin/ggwave-rx")
@@ -36,11 +37,8 @@ class GGWave(Thread):
             raise ValueError(f"ggwave-rx not found in {self.rx}, "
                              f"please install from https://github.com/ggerganov/ggwave")
 
-        self.OPCODES = {
-            "HMPSWD:": self.handle_pswd,
-            "HMKEY:": self.handle_key,
-            "HMHOST:": self.handle_host
-        }
+        self.OPCODES = callbacks or {}
+
         self.running = False
         self.remote = self.config.get("remote", False)
         if not isfile(self.tx):
@@ -57,11 +55,16 @@ class GGWave(Thread):
         while self.running:
             try:
                 txt = child.readline().decode("utf-8").strip()
+                if self.debug and txt in ["Receiving sound data ...",
+                           "Analyzing captured data .."]:
+                    LOG.debug(txt)
                 if txt.startswith(marker):
                     payload = txt.split(marker)[-1][1:-1]
                     for opcode, handler in self.OPCODES.items():
                         if payload.startswith(opcode):
                             p = payload.split(opcode, 1)[-1]
+                            if self.debug:
+                                LOG.debug(f"OPCODE: {opcode} PAYLOAD: {p}")
                             handler(p)
                             break
                     else:
@@ -143,9 +146,13 @@ class GGWaveMaster(Thread):
         self.bus = bus or FakeBus()
         self.host = host
         self.pswd = pswd
-        self.ggwave = GGWave(config)
+
+        callbacks = {
+            "HMKEY:": self.handle_key
+        }
+
+        self.ggwave = GGWave(config, callbacks)
         self.ggwave.handle_key = self.handle_key
-        self.ggwave.handle_pswd = self.handle_pswd
 
         # if in silent mode the password is assumed to be transmited out of band
         # might be a string emited by the user with another ggwave implementation
@@ -175,23 +182,23 @@ class GGWaveMaster(Thread):
 
     def run(self):
         self.ggwave.start()
+        LOG.info("ggwave activated")
         self.pswd = self.pswd or os.urandom(8).hex()
         self.host = self.host or get_ip()
         self.bus.emit(Message("hm.ggwave.activated"))
+        if self.silent_mode:
+            LOG.info(f"to enrol a new device using ggwave emit the code HMPSWD:{self.pswd}")
         while self.ggwave.running:
-            time.sleep(3)
+            time.sleep(5)
             if not self.silent_mode:
+                LOG.info("broadcasting password")
                 self.ggwave.emit(f"HMPSWD:{self.pswd}")
                 self.bus.emit(Message("hm.ggwave.pswd_emitted"))
-
-    def handle_pswd(self, payload):
-        # password shared out of band, silent_mode trigger
-        if not self.ggwave.running and payload == self.pswd:
-            self.start()
 
     def stop(self):
         self.ggwave.stop()
         self.bus.emit(Message("hm.ggwave.deactivated"))
+        LOG.info("ggwave deactivated")
 
     def handle_key(self, payload):
         if self.ggwave.running:
@@ -210,22 +217,28 @@ class GGWaveSlave:
         self.bus = bus or FakeBus()
         self.pswd = None
         self.key = key or os.urandom(8).hex()
-        self.ggwave = GGWave(config)
-        self.ggwave.handle_pswd = self.handle_pswd
-        self.ggwave.handle_host = self.handle_host
+        callbacks = {
+            "HMPSWD:": self.handle_pswd,
+            "HMHOST:": self.handle_host
+        }
+        self.ggwave = GGWave(config, callbacks)
 
     def start(self):
         self.ggwave.start()
         self.bus.emit(Message("hm.ggwave.activated"))
+        LOG.info("ggwave activated")
 
     def stop(self):
         self.ggwave.stop()
         self.pswd = None
         self.key = None
         self.bus.emit(Message("hm.ggwave.deactivated"))
+        LOG.info("ggwave deactivated")
 
     def handle_pswd(self, payload):
+        LOG.info(f"ggwave password received: {payload}")
         if self.ggwave.running:
+            #LOG.info(f"ggwave password received: {payload}")
             self.pswd = payload
             self.bus.emit(Message("hm.ggwave.pswd_received"))
             self.ggwave.emit(f"HMKEY:{self.key}")
@@ -234,6 +247,7 @@ class GGWaveSlave:
     def handle_host(self, payload):
         if self.ggwave.running:
             host = payload
+            LOG.info(f"ggwave host received: {payload}")
             self.bus.emit(Message("hm.ggwave.host_received"))
             if host and self.pswd and self.key:
                 identity = NodeIdentity()
