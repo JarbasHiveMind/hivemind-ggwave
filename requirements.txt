@@ -1,0 +1,4 @@
+pexpect
+requests
+hivemind_bus_client
+ovos-utils
