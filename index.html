@@ -1,80 +1,133 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en-us">
+
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hey HiveMind</title>
     <meta name="description" content="Web app to connect HiveMind devices through sound for OpenVoiceOS devices">
-</head>
-<body>
-<div id="main-container">
-    Hey <b>HiveMind</b>, pair a satellite device!
-    <br><
-    <form class="pure-form pure-form-stacked pure-u-1-2" onsubmit="return false">
-        <input class="pure-u-1-1" id="txData" autocomplete="off" type="text" placeholder="HiveMind Code">
-        <button onclick="onSend();" id="broadcast"
-                class="pure-u-1-1 pure-button pure-button-primary">BROADCAST
-        </button>
-    </form>
-</div>
-<script type="text/javascript" src="js/ggwave.js"></script>
-<script type='text/javascript'>
-    window.AudioContext = window.AudioContext || window.webkitAudioContext;
-    window.OfflineAudioContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-
-    var context = null;
-
-    // the ggwave module instance
-    var ggwave = null;
-    var parameters = null;
-    var instance = null;
-
-    // instantiate the ggwave instance
-    // ggwave_factory comes from the ggwave.js module
-    ggwave_factory().then(function(obj) {
-        ggwave = obj;
-    });
-
-    var txData = document.getElementById("txData");
-
-    // helper function
-    function convertTypedArray(src, type) {
-        var buffer = new ArrayBuffer(src.byteLength);
-        var baseView = new src.constructor(buffer).set(src);
-        return new type(buffer);
-    }
-
-    // initialize audio context and ggwave
-    function init() {
-        if (!context) {
-            context = new AudioContext({sampleRate: 48000});
-
-            parameters = ggwave.getDefaultParameters();
-            parameters.sampleRateInp = context.sampleRate;
-            parameters.sampleRateOut = context.sampleRate;
-            instance = ggwave.init(parameters);
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* Custom CSS styles */
+        body {
+            background-color: #f8f9fa;
+            padding-top: 20px;
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
         }
-    }
 
-    //
-    // Tx
-    //
+        #main-container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
 
-    function onSend() {
-        init();
+        h2 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 20px;
+        }
 
-        // generate audio waveform
-        var waveform = ggwave.encode(instance, txData.value, ggwave.ProtocolId.GGWAVE_PROTOCOL_AUDIBLE_FAST, 10)
+        input[type="text"],
+        button {
+            margin-bottom: 10px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+            width: 100%;
+            box-sizing: border-box;
+        }
 
-        // play audio
-        var buf = convertTypedArray(waveform, Float32Array);
-        var buffer = context.createBuffer(1, buf.length, context.sampleRate);
-        buffer.getChannelData(0).set(buf);
-        var source = context.createBufferSource();
-        source.buffer = buffer;
-        source.connect(context.destination);
-        source.start(0);
-    }
+        button {
+            background-color: #007bff;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
 
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
 
-</script>
+<body>
+    <div id="main-container">
+        <h2>Hey <b>HiveMind</b>, pair a satellite device!</h2>
+        <form class="pure-form pure-form-stacked" onsubmit="return false">
+            <input id="txData" autocomplete="off" type="text" placeholder="HiveMind Code">
+            <button onclick="onSend();" class="pure-button pure-button-primary">BROADCAST</button>
+        </form>
+    </div>
+
+    <script type="text/javascript" src="js/ggwave.js"></script>
+    <script type='text/javascript'>
+        // Ensure variables are properly scoped
+        window.AudioContext = window.AudioContext || window.webkitAudioContext;
+        window.OfflineAudioContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+
+        var context = null;
+
+        // the ggwave module instance
+        var ggwave = null;
+        var parameters = null;
+        var instance = null;
+
+        // instantiate the ggwave instance
+        // ggwave_factory comes from the ggwave.js module
+        ggwave_factory().then(function (obj) {
+            ggwave = obj;
+        });
+
+        var txData = document.getElementById("txData");
+
+        // helper function
+        function convertTypedArray(src, type) {
+            var buffer = new ArrayBuffer(src.byteLength);
+            var baseView = new src.constructor(buffer).set(src);
+            return new type(buffer);
+        }
+
+        // initialize audio context and ggwave
+        function init() {
+            if (!context) {
+                context = new AudioContext({ sampleRate: 48000 });
+
+                parameters = ggwave.getDefaultParameters();
+                parameters.sampleRateInp = context.sampleRate;
+                parameters.sampleRateOut = context.sampleRate;
+                instance = ggwave.init(parameters);
+            }
+        }
+
+        // Transmit data using ggwave
+        function transmitPackage(data) {
+            init();
+
+            // generate audio waveform with the data
+            var waveform = ggwave.encode(instance, data, ggwave.ProtocolId.GGWAVE_PROTOCOL_AUDIBLE_FAST, 10);
+
+            // play audio
+            var buf = convertTypedArray(waveform, Float32Array);
+            var buffer = context.createBuffer(1, buf.length, context.sampleRate);
+            buffer.getChannelData(0).set(buf);
+            var source = context.createBufferSource();
+            source.buffer = buffer;
+            source.connect(context.destination);
+            source.start(0);
+        }
+
+        // Event listener for sending commands
+        function onSend() {
+            var hiveMindCode = txData.value;
+            transmitPackage(hiveMindCode);
+        }
+    </script>
 </body>
+
 </html>
