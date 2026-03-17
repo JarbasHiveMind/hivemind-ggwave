@@ -13,16 +13,20 @@ can be used.
 configured with `sample_width=4` **and** must actually produce IEEE 754
 float32 bytes — not signed 32-bit integer (S32_LE).
 
-| Plugin | float32 support | Notes |
-|---|---|---|
-| `ovos-microphone-plugin-sounddevice` | ✅ | Maps `sample_width=4` to `dtype=float32` |
-| `ovos-microphone-plugin-files` | ✅ | Reads `.wav` files; file must be float32 |
-| `ovos-microphone-plugin-alsa` | ❌ | `sample_width=4` → `PCM_FORMAT_S32_LE` (int32) |
-| `ovos-microphone-plugin-pyaudio` | ❌ | `sample_width=4` → PyAudio int32 format |
+All four plugins now support `float32_output: bool = False`.  Set it to
+``True`` to enable float32 output:
 
-ALSA and PyAudio require an int32→float32 conversion wrapper before use with
-ggwave.  The recommended approach is to pass a custom `Microphone` instance
-(see [Custom microphone](#custom-microphone-instance) below).
+| Plugin | `float32_output=True` mechanism |
+|---|---|
+| `ovos-microphone-plugin-sounddevice` | Uses `dtype="float32"` in `sd.RawInputStream`; gain/downmix work natively |
+| `ovos-microphone-plugin-alsa` | Opens `PCM_FORMAT_FLOAT_LE` ALSA format |
+| `ovos-microphone-plugin-pyaudio` | Uses `pyaudio.paFloat32`; bypasses speech_recognition abstraction |
+| `ovos-microphone-plugin-files` | Converts via `AudioData.get_np_float32()` (normalised −1.0…+1.0) |
+
+> **Note for sounddevice**: float32 resampling is not implemented.  If the
+> device's native sample rate differs from `sample_rate`, configure
+> `sample_rate` to match the device rather than relying on software
+> resampling.
 
 ---
 
@@ -57,6 +61,39 @@ config = {
         "ovos-microphone-plugin-sounddevice": {
             "device": "default",  # device name, index, or None for system default
             "latency": "low",
+            "float32_output": True,
+        },
+    }
+}
+ggwave = GGWave(config=config)
+```
+
+### ALSA (Linux)
+
+```python
+# pip install ovos-microphone-plugin-alsa
+config = {
+    "microphone": {
+        "module": "ovos-microphone-plugin-alsa",
+        "ovos-microphone-plugin-alsa": {
+            "device": "default",
+            "float32_output": True,
+        },
+    }
+}
+ggwave = GGWave(config=config)
+```
+
+### PyAudio (cross-platform)
+
+```python
+# pip install ovos-microphone-plugin-pyaudio
+config = {
+    "microphone": {
+        "module": "ovos-microphone-plugin-pyaudio",
+        "ovos-microphone-plugin-pyaudio": {
+            "device": "default",
+            "float32_output": True,
         },
     }
 }
@@ -65,8 +102,8 @@ ggwave = GGWave(config=config)
 
 ### files (testing / CI)
 
-Reads `.wav` files dropped into a directory.  Files must be float32 mono at
-`sample_rate` Hz (default 48 000 Hz).
+Reads audio files dropped into a directory.  Set `float32_output=True` so
+the plugin converts the file's PCM data to float32 before queuing.
 
 ```python
 # pip install ovos-microphone-plugin-files
@@ -76,6 +113,7 @@ config = {
         "ovos-microphone-plugin-files": {
             "files_folder": "/tmp/ggwave-input",
             "autodelete": True,
+            "float32_output": True,
         },
     }
 }
@@ -105,38 +143,3 @@ class MyMicrophone(Microphone):
 ggwave = GGWave(microphone=MyMicrophone())
 ```
 
-### ALSA with int32→float32 conversion
-
-ALSA captures S32_LE (big-endian signed 32-bit integer) when
-`sample_width=4`.  The wrapper below converts each chunk before handing it
-to ggwave.
-
-```python
-import struct
-from ovos_microphone_plugin_alsa import AlsaMicrophone
-
-class AlsaFloat32Microphone(AlsaMicrophone):
-    """Wraps AlsaMicrophone and converts S32_LE → float32."""
-
-    sample_rate: int = 48_000
-    sample_width: int = 4
-    sample_channels: int = 1
-    chunk_size: int = 4096  # bytes (= 1024 float32 frames)
-
-    def read_chunk(self) -> Optional[bytes]:
-        raw = super().read_chunk()
-        if raw is None:
-            return None
-        # S32_LE → float32: divide each signed 32-bit sample by 2**31
-        n = len(raw) // 4
-        samples = struct.unpack(f"<{n}i", raw)
-        return struct.pack(f"{n}f", *(s / 2_147_483_648.0 for s in samples))
-
-ggwave = GGWave(microphone=AlsaFloat32Microphone())
-```
-
-### PyAudio with int32→float32 conversion
-
-PyAudio similarly returns int32 for `sample_width=4`.  Apply the same
-conversion pattern as the ALSA example above, subclassing
-`PyAudioMicrophone` and overriding `read_chunk()`.
