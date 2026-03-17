@@ -9,8 +9,7 @@
 - **No duplicate key handling** — if the same satellite runs GGWave twice (e.g. after a reset), `add_client()` adds a second entry rather than updating the existing one, creating duplicate entries in the database.
 - **No timeout for slave pairing** — `GGWaveSlave` runs indefinitely until `handle_host()` calls `stop()`. If the master never sends `HMHOST:` (e.g. due to RF interference), the slave never exits pairing mode.
 - **No pairing confirmation sound on the satellite** — after `handle_host()` saves the identity, there is no local audio cue to confirm successful pairing.
-- **`GGWaveMaster` does not stop broadcasting after first pairing** — the password broadcast loop continues even after a client has been registered. Ideally the master should stop or pause after a successful pairing.
-- **Silent mode UX is unclear** — in `silent_mode`, the password is logged but not displayed in any UI. The user has to read logs to find the code.
+- **`GGWaveMaster` does not stop broadcasting after first pairing** — the password broadcast loop continues even after a client has been registered. The caller should call `stop()` after `hm.ggwave.client_registered` if only one pairing is expected.
 
 ## Resolved
 

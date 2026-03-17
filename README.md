@@ -1,22 +1,59 @@
 # HiveMind GGWave
 
-Data over sound for HiveMind
+Zero-configuration satellite enrollment for HiveMind via data-over-sound.
 
-- manually exchanged string [via browser](https://jarbashivemind.github.io/hivemind-ggwave/)
-- with a [talking button](https://github.com/ggerganov/ggwave/discussions/27)
+This library defines the **GGWave pairing protocol opcodes** and provides the
+primitive classes (`GGWave`, `GGWaveMaster`, `GGWaveSlave`) that implement
+them. Orchestration — when to start/stop, how to display the pairing code,
+how to register clients — is the responsibility of the **caller** (e.g.
+`hivemind-core`).
 
-## Enrolling clients
+## How it works
 
-pre-requisites:
-- a device with a browser, eg a phone
-- a hivemind-core device with mic and speaker, eg a mark2
-- a (unpaired) voice satellite device with mic and speaker, eg a raspberry pi
-- all devices need to be in audible range, they each need to be able to listen to sounds emitted by each other
+```
+Hub (GGWaveMaster)               Satellite (GGWaveSlave)
+        │                                  │
+        │  HMPSWD:<password>               │
+        │─────────────────────────────────▶│  (audio)
+        │                                  │
+        │                   HMKEY:<key>    │
+        │◀─────────────────────────────────│  (audio)
+        │                                  │
+        │  [optional] HMWSP:<ws://ip:port> │
+        │─────────────────────────────────▶│
+        │  [optional] HMHTTP:<http://...>  │
+        │─────────────────────────────────▶│
+        │  HMHOST:<ip>  (backward compat)  │
+        │─────────────────────────────────▶│
+        │                                  │
+        │                    saves identity, connects
+```
 
-workflow:
-- when launching hivemind-core take note of the provided code, eg `HMPSWD:ce357a6b59f6b1f9`
-- go to https://jarbashivemind.github.io/hivemind-ggwave and emit the code
-- the voice satellite will decode the password, generate an access key and send it back via ggwave
-- master adds a client with key + password, send an ack (containing host) via ggwave
-- satellite devices get the ack then connect to received host
+## Silent mode
 
+When `silent_mode=True`, `GGWaveMaster` does **not** broadcast the password
+automatically. The caller is responsible for showing the code in a UI and
+triggering the transmission at the right moment.
+
+For example, `hivemind-core` will display the code on screen and wait for the
+user to press a button before emitting it. This is safer than the default
+broadcast loop — the password is only transmitted once, on user demand.
+
+```python
+master = GGWaveMaster(silent_mode=True, add_client_callback=my_register_fn)
+master.start()
+# master.pswd is set once run() initialises. Caller emits when ready:
+master.ggwave.emit(f"HMPSWD:{master.pswd}")
+```
+
+Alternatively, the code can be entered manually at
+https://jarbashivemind.github.io/hivemind-ggwave — useful when the hub has no
+speaker, or when the user wants to pair from a phone.
+
+## Installation
+
+```bash
+pip install hivemind-ggwave
+```
+
+Requires the `ggwave` Python package and `sounddevice`.

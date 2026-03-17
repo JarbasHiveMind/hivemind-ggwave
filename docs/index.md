@@ -10,7 +10,16 @@ HiveMind GGWave provides an "audio QR code" transport for zero-configuration enr
 
 ## Overview
 
-GGWave allows a Mind to "broadcast" a temporary password over audio. A satellite listening for this signal can then generate its own access key and transmit it back to the Mind, completing the enrollment without any manual configuration or network pre-sharing.
+This library provides **primitives** — protocol opcode definitions and the
+classes that implement them. The caller (e.g. `hivemind-core`) is responsible
+for orchestration: when to start/stop, how to present the pairing code to the
+user, and how to register clients.
+
+In **silent mode** the hub does not broadcast the password automatically. The
+caller shows the code in a UI and triggers transmission on user demand (e.g. a
+button press). This is the recommended production flow. The browser tool at
+https://jarbashivemind.github.io/hivemind-ggwave provides the same capability
+without a hub speaker.
 
 ## Installation
 
