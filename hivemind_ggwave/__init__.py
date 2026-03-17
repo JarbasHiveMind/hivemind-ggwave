@@ -48,7 +48,7 @@ class GGWave(Thread):
         Satellite → Master : HMKEY:<access_key>
         Master → Satellite : HMWSP:<ws[s]://ip:port> (if ws_port given)
         Master → Satellite : HMHTTP:<http[s]://ip:port> (if http_port given)
-        Master → Satellite : HMHOST:<ip>            (always, backward compat)
+        Master → Satellite : HMHOST:<ip>            (always, doubles as end-of-handshake marker)
 
     Args:
         config: Optional dict; supported keys:

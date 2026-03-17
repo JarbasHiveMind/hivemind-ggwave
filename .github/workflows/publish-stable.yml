@@ -1,0 +1,11 @@
+name: Publish Stable
+
+on:
+  push:
+    tags:
+      - "V*"
+
+jobs:
+  publish-stable:
+    uses: OpenVoiceOS/gh-automations/.github/workflows/publish-stable.yml@dev
+    secrets: inherit
