@@ -171,8 +171,13 @@ class GGWaveMaster(Thread):
     periodically until a satellite sends back its access key, then registers
     the new client and confirms the hub address.
 
-    If *silent_mode* is ``True`` the password is not broadcast over audio —
-    it must be conveyed out-of-band (e.g. shown in a browser or logged).
+    If *silent_mode* is ``True`` the password is not broadcast automatically.
+    The caller shows the code in a UI and triggers ``ggwave.emit()`` on user
+    demand (e.g. a button press) — safer than a continuous broadcast loop.
+
+    This class provides the pairing primitive only.  Orchestration (when to
+    start/stop, how to display the code, how to persist clients) is the
+    caller's responsibility.
 
     Args:
         bus: Optional message bus; a :class:`FakeBus` is created if not given.
@@ -180,10 +185,11 @@ class GGWaveMaster(Thread):
             ``None``.
         host: Hub IP to broadcast.  Auto-detected via
             :func:`~ovos_utils.network_utils.get_ip` if ``None``.
-        silent_mode: If ``True``, skip the audio password broadcast.
+        silent_mode: If ``True``, skip the automatic audio password broadcast.
         config: Forwarded to :class:`GGWave`.
-        add_client_callback: If set, called as ``callback(access_key, pswd)``
-            instead of importing :class:`hivemind_core.database.ClientDatabase`.
+        add_client_callback: Called as ``callback(access_key, pswd)`` when a
+            satellite sends its key.  The caller is responsible for persisting
+            the new client.
         ws_port: If given, emits ``HMWSP:ws[s]://<host>:<port>`` so satellites
             learn the exact WebSocket URL.
         ws_ssl: Whether the WebSocket server uses SSL (``wss://``).
@@ -191,11 +197,11 @@ class GGWaveMaster(Thread):
         http_ssl: Whether the HTTP server uses SSL (``https://``).
     """
 
-    def __init__(self, bus=None, pswd: Optional[str] = None,
+    def __init__(self, add_client_callback: Callable,
+                 bus=None, pswd: Optional[str] = None,
                  host: Optional[str] = None,
                  silent_mode: bool = False,
                  config: Optional[dict] = None,
-                 add_client_callback: Optional[Callable] = None,
                  ws_port: Optional[int] = None,
                  ws_ssl: bool = False,
                  http_port: Optional[int] = None,
@@ -215,36 +221,14 @@ class GGWaveMaster(Thread):
         self.ggwave = GGWave(config, callbacks)
 
     def add_client(self, access_key: str) -> None:
-        """Register a new satellite client.
-
-        If *add_client_callback* was provided, it is called; otherwise
-        :class:`hivemind_core.database.ClientDatabase` is used directly.
+        """Register a new satellite client via *add_client_callback*.
 
         Args:
             access_key: The access key received from the satellite.
         """
-        if self.add_client_callback is not None:
-            self.add_client_callback(access_key, self.pswd)
-            self.bus.emit(Message("hm.ggwave.client_registered",
-                                  {"key": access_key, "pswd": self.pswd}))
-            return
-
-        from hivemind_core.database import ClientDatabase
-
-        crypto_key = os.urandom(8).hex()
-        with ClientDatabase() as db:
-            name = f"HiveMind-Node-{db.total_clients()}"
-            db.add_client(name, access_key, crypto_key=crypto_key,
-                          password=self.pswd)
-            user = db.get_client_by_api_key(access_key)
-            node_id = db.get_item_id(user)
-            LOG.info(f"Client registered in database: {access_key}")
-
+        self.add_client_callback(access_key, self.pswd)
         self.bus.emit(Message("hm.ggwave.client_registered",
-                              {"key": access_key,
-                               "pswd": self.pswd,
-                               "id": node_id,
-                               "name": name}))
+                              {"key": access_key, "pswd": self.pswd}))
 
     def run(self) -> None:
         """Start the GGWave receiver and broadcast the password periodically."""
