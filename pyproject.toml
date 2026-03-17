@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hivemind-ggwave"
+version = "0.0.2"
+description = "Data over sound for HiveMind"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "jarbasAI", email = "jarbasai@mailfence.com"}
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "ggwave>=0.4.2",
+    "sounddevice",
+    "hivemind-bus-client",
+    "ovos-utils",
+    "ovos-bus-client",
+]
+
+[project.urls]
+Homepage = "https://github.com/JarbasHiveMind/hivemind-ggwave"
+
+[tool.setuptools.packages.find]
+include = ["hivemind_ggwave*"]
