@@ -7,6 +7,7 @@ HiveMind GGWave provides an "audio QR code" transport for zero-configuration enr
 
 - [GGWave Protocol](protocol.md) - The custom opcodes and handshake flow.
 - [Master and Slave](master_slave.md) - Implementation of the enrollment process.
+- [Microphone Plugins](microphone.md) - Supported plugins, float32 requirement, config examples.
 
 ## Overview
 
