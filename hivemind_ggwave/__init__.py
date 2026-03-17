@@ -141,11 +141,19 @@ class GGWaveMaster(Thread):
     might be a string emitted by the user with another ggwave implementation
     """
 
-    def __init__(self, bus=None, pswd=None, host=None, silent_mode=False, config=None):
+    def __init__(self, bus=None, pswd=None, host=None, silent_mode=False, config=None,
+                 add_client_callback=None,
+                 ws_port=None, ws_ssl=False,
+                 http_port=None, http_ssl=False):
         super().__init__(daemon=True)
         self.bus = bus or FakeBus()
         self.host = host
         self.pswd = pswd
+        self.add_client_callback = add_client_callback
+        self.ws_port = ws_port
+        self.ws_ssl = ws_ssl
+        self.http_port = http_port
+        self.http_ssl = http_ssl
 
         callbacks = {
             "HMKEY:": self.handle_key
@@ -159,6 +167,11 @@ class GGWaveMaster(Thread):
         self.silent_mode = silent_mode
 
     def add_client(self, access_key):
+        if self.add_client_callback is not None:
+            self.add_client_callback(access_key, self.pswd)
+            self.bus.emit(Message("hm.ggwave.client_registered",
+                                  {"key": access_key, "pswd": self.pswd}))
+            return
 
         from hivemind_core.database import ClientDatabase
 
@@ -204,7 +217,13 @@ class GGWaveMaster(Thread):
         if self.ggwave.running:
             self.bus.emit(Message("hm.ggwave.key_received"))
             self.add_client(payload)
-            self.ggwave.emit(f"HMHOST:{self.host}")
+            if self.ws_port:
+                scheme = "wss" if self.ws_ssl else "ws"
+                self.ggwave.emit(f"HMWSP:{scheme}://{self.host}:{self.ws_port}")
+            if self.http_port:
+                scheme = "https" if self.http_ssl else "http"
+                self.ggwave.emit(f"HMHTTP:{scheme}://{self.host}:{self.http_port}")
+            self.ggwave.emit(f"HMHOST:{self.host}")  # backward compat
             self.bus.emit(Message("hm.ggwave.host_emitted"))
 
 
@@ -217,9 +236,12 @@ class GGWaveSlave:
         self.bus = bus or FakeBus()
         self.pswd = None
         self.key = key or os.urandom(8).hex()
+        self._ws_url_received = False
         callbacks = {
             "HMPSWD:": self.handle_pswd,
-            "HMHOST:": self.handle_host
+            "HMWSP:": self.handle_wsp,
+            "HMHTTP:": self.handle_http,
+            "HMHOST:": self.handle_host,
         }
         self.ggwave = GGWave(config, callbacks)
 
@@ -244,19 +266,73 @@ class GGWaveSlave:
             self.ggwave.emit(f"HMKEY:{self.key}")
             self.bus.emit(Message("hm.ggwave.key_emitted"))
 
-    def handle_host(self, payload):
+    def _resolve_host(self, payload: str) -> str:
+        """Override in subclasses to customize URL construction from HMHOST payload."""
+        return payload
+
+    def _save_identity(self, host):
+        """Normalise host to a URL, save identity, emit event, and stop."""
+        if host and self.pswd and self.key:
+            identity = NodeIdentity()
+            identity.password = self.pswd
+            identity.access_key = self.key
+            if not host.startswith(("ws://", "wss://", "http://", "https://")):
+                host = "ws://" + host
+            identity.default_master = host
+            identity.save()
+            LOG.info(f"identity saved: {identity.IDENTITY_FILE.path}")
+            self.bus.emit(Message("hm.ggwave.identity_updated"))
+            self.stop()
+
+    def handle_wsp(self, payload):
+        """Handle HMWSP: opcode — full WebSocket URL including port."""
         if self.ggwave.running:
-            host = payload
+            LOG.info(f"ggwave ws url received: {payload}")
+            self.bus.emit(Message("hm.ggwave.host_received"))
+            self._ws_url_received = True
+            self._save_identity(payload)
+
+    def handle_http(self, payload):
+        """Handle HMHTTP: opcode — full HTTP URL including port (fallback if no WS URL)."""
+        if self.ggwave.running and not self._ws_url_received:
+            LOG.info(f"ggwave http url received: {payload}")
+            self.bus.emit(Message("hm.ggwave.host_received"))
+            self._save_identity(payload)
+
+    def handle_host(self, payload):
+        """Handle HMHOST: opcode — bare IP for backward compatibility."""
+        if self.ggwave.running and not self._ws_url_received:
+            host = self._resolve_host(payload)
             LOG.info(f"ggwave host received: {payload}")
             self.bus.emit(Message("hm.ggwave.host_received"))
-            if host and self.pswd and self.key:
-                identity = NodeIdentity()
-                identity.password = self.pswd
-                identity.access_key = self.key
-                if not host.startswith("ws://") and not host.startswith("wss://"):
-                    host = "ws://" + host
-                identity.default_master = host
-                identity.save()
-                LOG.info(f"identity saved: {identity.IDENTITY_FILE.path}")
-                self.bus.emit(Message("hm.ggwave.identity_updated"))
-                self.stop()
+            self._save_identity(host)
+
+
+class GGWavePresenceSlave(GGWaveSlave):
+    """GGWaveSlave that pre-discovers the hub via UPnP/Zeroconf (hivemind-presence).
+
+    hivemind-presence is an optional dependency. If not installed, falls back to
+    plain GGWaveSlave behaviour (uses the bare IP from the HMHOST: payload).
+    """
+
+    def __init__(self, key=None, bus=None, config=None, presence_timeout=25.0):
+        super().__init__(key, bus, config)
+        self._discovered_url = None
+        self._presence_timeout = presence_timeout
+
+    def start(self):
+        try:
+            from hivemind_presence import LocalDiscovery
+            disc = LocalDiscovery()
+            for node in disc.scan(timeout=self._presence_timeout):
+                scheme = "wss" if node.ssl else "ws"
+                self._discovered_url = f"{scheme}://{node.host}:{node.port}"
+                LOG.info(f"HiveMind-presence discovered: {self._discovered_url}")
+                disc.stop()
+                break
+        except ImportError:
+            LOG.warning("hivemind-presence not installed; will use HMHOST payload directly")
+        super().start()
+
+    def _resolve_host(self, payload: str) -> str:
+        return self._discovered_url or payload
