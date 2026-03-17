@@ -3,10 +3,9 @@ import os
 import time
 import wave
 from threading import Thread
-from typing import Callable, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 import ggwave
-import sounddevice as sd
 from hivemind_bus_client.identity import NodeIdentity
 from ovos_bus_client.message import Message
 from ovos_utils.fakebus import FakeBus
@@ -14,11 +13,14 @@ from ovos_utils.log import LOG
 from ovos_utils.network_utils import get_ip
 from ovos_utils.sound import play_audio
 
-# Audio parameters matching the ggwave defaults
+if TYPE_CHECKING:
+    from ovos_plugin_manager.templates.microphone import Microphone
+
+# Audio parameters — must match ggwave float32 expectations
 _SAMPLE_RATE: int = 48000
 _CHANNELS: int = 1
 _BLOCK_SIZE: int = 1024  # frames per read; smaller = lower latency
-_DTYPE: str = "float32"
+_SAMPLE_WIDTH: int = 4   # float32 = 4 bytes per sample
 
 
 def _encode_wav(samples: bytes, sample_rate: int = _SAMPLE_RATE) -> bytes:
@@ -35,9 +37,10 @@ def _encode_wav(samples: bytes, sample_rate: int = _SAMPLE_RATE) -> bytes:
 class GGWave(Thread):
     """Audio-over-sound transceiver using the ``ggwave`` Python bindings.
 
-    The receiver loop captures audio via ``sounddevice`` and feeds each chunk
-    to ``ggwave.decode()``.  When a complete payload is recognised, the
-    matching opcode handler is called.
+    The receiver loop reads float32 mono audio from an OVOS
+    :class:`~ovos_plugin_manager.templates.microphone.Microphone` plugin and
+    feeds each chunk to ``ggwave.decode()``.  When a complete payload is
+    recognised, the matching opcode handler is called.
 
     ``emit()`` uses ``ggwave.encode()`` to produce PCM samples, wraps them
     in a WAV container, and plays them via ``ovos_utils.sound.play_audio``.
@@ -52,12 +55,22 @@ class GGWave(Thread):
 
     Args:
         config: Optional dict; supported keys:
+
             - ``protocol_id`` (int): ggwave transmission protocol (default 1).
             - ``volume`` (int): TX volume 0–100 (default 50).
-            - ``sample_rate`` (int): audio sample rate (default 48 000 Hz).
+            - ``sample_rate`` (int): audio sample rate in Hz (default 48 000).
             - ``block_size`` (int): capture block size in frames (default 1024).
-            - ``input_device``: sounddevice device index or name for capture.
-            - ``output_device``: sounddevice device index or name for playback.
+            - ``microphone`` (dict): config forwarded to
+              :class:`~ovos_plugin_manager.microphone.OVOSMicrophoneFactory`.
+              Must select a plugin that delivers float32 mono audio at
+              *sample_rate*.  If absent, the system OVOS microphone config is
+              used.
+
+        microphone: A pre-constructed
+            :class:`~ovos_plugin_manager.templates.microphone.Microphone`
+            instance.  Takes precedence over the ``microphone`` config key.
+            The instance **must** produce float32 (``sample_width=4``) mono
+            audio at the configured *sample_rate*.
         callbacks: ``{opcode_prefix: handler}`` mapping, e.g.
             ``{"HMPSWD:": self.handle_pswd}``.
         debug: If ``True``, log each decoded payload before dispatch.
@@ -65,7 +78,8 @@ class GGWave(Thread):
 
     def __init__(self, config: Optional[dict] = None,
                  callbacks: Optional[Dict[str, Callable]] = None,
-                 debug: bool = False):
+                 debug: bool = False,
+                 microphone: Optional["Microphone"] = None):
         super().__init__(daemon=True)
         self.config = config or {}
         self.debug = debug
@@ -75,8 +89,7 @@ class GGWave(Thread):
         self._volume: int = self.config.get("volume", 50)
         self._sample_rate: int = self.config.get("sample_rate", _SAMPLE_RATE)
         self._block_size: int = self.config.get("block_size", _BLOCK_SIZE)
-        self._input_device = self.config.get("input_device", None)
-        self._output_device = self.config.get("output_device", None)
+        self._microphone: Optional["Microphone"] = microphone
 
         self.running: bool = False
         self._ggwave = ggwave.init()
@@ -99,32 +112,56 @@ class GGWave(Thread):
     # Receive
     # ------------------------------------------------------------------
 
+    def _create_microphone(self) -> "Microphone":
+        """Instantiate the configured OVOS microphone plugin.
+
+        Uses the ``microphone`` sub-dict from *config* if present; otherwise
+        falls back to the system OVOS microphone configuration.  The plugin is
+        always configured for float32 (``sample_width=4``) mono audio at the
+        GGWave sample rate so that ``ggwave.decode()`` receives the correct
+        format.
+
+        Returns:
+            A ready-to-use :class:`~ovos_plugin_manager.templates.microphone.Microphone` instance.
+        """
+        from ovos_plugin_manager.microphone import OVOSMicrophoneFactory
+
+        mic_config: dict = dict(self.config.get("microphone") or {})
+        # Inject audio format required by ggwave; these are top-level dataclass
+        # fields on every Microphone subclass and are forwarded by the factory
+        # via the plugin-specific sub-dict.
+        module = mic_config.get("module")
+        if module:
+            plugin_cfg = dict(mic_config.get(module) or {})
+            plugin_cfg.setdefault("sample_rate", self._sample_rate)
+            plugin_cfg.setdefault("sample_width", _SAMPLE_WIDTH)
+            plugin_cfg.setdefault("sample_channels", _CHANNELS)
+            plugin_cfg.setdefault("chunk_size", self._block_size * _SAMPLE_WIDTH)
+            mic_config[module] = plugin_cfg
+        return OVOSMicrophoneFactory.create(mic_config or None)
+
     def run(self) -> None:
-        """Capture audio and dispatch decoded ggwave payloads to handlers."""
+        """Capture audio via the OVOS microphone plugin and dispatch payloads."""
         self.running = True
+        mic: "Microphone" = self._microphone or self._create_microphone()
         try:
-            with sd.RawInputStream(
-                samplerate=self._sample_rate,
-                channels=_CHANNELS,
-                dtype=_DTYPE,
-                blocksize=self._block_size,
-                device=self._input_device,
-            ) as stream:
-                while self.running:
-                    data, overflowed = stream.read(self._block_size)
-                    if overflowed:
-                        LOG.debug("ggwave: audio input overflow")
-                    result = ggwave.decode(self._ggwave, bytes(data))
-                    if result is not None:
-                        try:
-                            payload = result.decode("utf-8")
-                        except UnicodeDecodeError:
-                            LOG.warning("ggwave: received non-UTF-8 payload, ignoring")
-                            continue
-                        self._dispatch(payload)
+            mic.start()
+            while self.running:
+                data = mic.read_chunk()
+                if data is None:
+                    continue
+                result = ggwave.decode(self._ggwave, data)
+                if result is not None:
+                    try:
+                        payload = result.decode("utf-8")
+                    except UnicodeDecodeError:
+                        LOG.warning("ggwave: received non-UTF-8 payload, ignoring")
+                        continue
+                    self._dispatch(payload)
         except Exception:
             LOG.exception("ggwave receive loop error")
         finally:
+            mic.stop()
             self.running = False
 
     def _dispatch(self, payload: str) -> None:

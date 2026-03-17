@@ -26,7 +26,16 @@ without a hub speaker.
 ```bash
 pip install -e hivemind-ggwave/
 ```
-> **Note**: Requires the `ggwave` Python package and `sounddevice`.
+
+> **Note**: Requires the `ggwave` Python package.  Audio capture uses the
+> OVOS microphone plugin system (`ovos-plugin-manager`).  The default plugin
+> is `ovos-microphone-plugin-sounddevice`:
+> ```bash
+> pip install "hivemind-ggwave[sounddevice]"
+> ```
+> Any other OVOS-compatible microphone plugin can be used instead — pass a
+> pre-constructed `Microphone` instance to `GGWave(microphone=...)` or
+> configure `microphone.module` in the `config` dict.
 
 ## Core Components
 

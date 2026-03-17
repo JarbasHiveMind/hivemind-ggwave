@@ -19,11 +19,14 @@ classifiers = [
 ]
 dependencies = [
     "ggwave>=0.4.2",
-    "sounddevice",
+    "ovos-plugin-manager",
     "hivemind-bus-client",
     "ovos-utils",
     "ovos-bus-client",
 ]
+
+[project.optional-dependencies]
+sounddevice = ["ovos-microphone-plugin-sounddevice"]
 
 [project.urls]
 Homepage = "https://github.com/JarbasHiveMind/hivemind-ggwave"

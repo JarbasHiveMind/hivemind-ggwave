@@ -15,10 +15,6 @@ _ggwave_stub.decode = MagicMock(return_value=None)
 _ggwave_stub.encode = MagicMock(return_value=b"\x00" * 16)
 sys.modules.setdefault("ggwave", _ggwave_stub)
 
-_sd_stub = types.ModuleType("sounddevice")
-_sd_stub.RawInputStream = MagicMock()
-sys.modules.setdefault("sounddevice", _sd_stub)
-
 
 # ---------------------------------------------------------------------------
 # Helpers — patch ggwave.init so GGWave() can be constructed in tests
