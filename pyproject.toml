@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hivemind-ggwave"
-version = "0.0.2"
+dynamic = ["version"]
 description = "Data over sound for HiveMind"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,23 +13,35 @@ authors = [
     {name = "jarbasAI", email = "jarbasai@mailfence.com"}
 ]
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
     "ggwave>=0.4.2",
-    "ovos-plugin-manager",
-    "hivemind-bus-client",
-    "ovos-utils",
-    "ovos-bus-client",
+    "ovos-plugin-manager>=0.0.23,<3.0.0",
+    "hivemind-bus-client>=0.0.4a3,<1.0.0",
+    "ovos-utils>=0.0.33,<1.0.0",
+    "ovos-bus-client>=1.3.1,<2.0.0",
 ]
 
 [project.optional-dependencies]
 sounddevice = ["ovos-microphone-plugin-sounddevice"]
+alsa = ["ovos-microphone-plugin-alsa"]
+pyaudio = ["ovos-microphone-plugin-pyaudio"]
 
 [project.urls]
 Homepage = "https://github.com/JarbasHiveMind/hivemind-ggwave"
 
+[tool.setuptools.dynamic]
+version = {attr = "hivemind_ggwave.version.__version__"}
+
 [tool.setuptools.packages.find]
 include = ["hivemind_ggwave*"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
