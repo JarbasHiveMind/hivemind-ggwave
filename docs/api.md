@@ -2,7 +2,7 @@
 
 Source: `hivemind_ggwave/__init__.py`
 
-All classes are threads (`Thread`) or thread wrappers. The `ggwave-rx` binary must be installed for any of them to function.
+All classes are threads (`Thread`) or thread wrappers. The `ggwave` Python package and `sounddevice` must be installed.
 
 ---
 
@@ -12,7 +12,7 @@ All classes are threads (`Thread`) or thread wrappers. The `ggwave-rx` binary mu
 class GGWave(Thread)
 ```
 
-Low-level wrapper around the `ggwave-rx` subprocess. Continuously reads decoded payloads from the subprocess stdout and dispatches them to registered opcode handlers.
+Audio transceiver using the `ggwave` Python bindings and `sounddevice`. Captures audio via `sounddevice.RawInputStream`, feeds each chunk to `ggwave.decode()`, and dispatches recognised payloads to registered opcode handlers. Transmits by encoding with `ggwave.encode()` and playing the resulting WAV.
 
 ### Constructor
 
@@ -22,49 +22,31 @@ GGWave(config=None, callbacks=None, debug=False)
 
 | Parameter | Type | Description |
 |---|---|---|
-| `config` | `dict` | Optional config with `ggwave-rx` and `ggwave-cli` paths, and `remote` flag |
+| `config` | `dict` | Optional config (see keys below) |
 | `callbacks` | `dict` | Mapping of opcode prefix strings → handler callables |
-| `debug` | `bool` | Log intermediate ggwave-rx output |
+| `debug` | `bool` | Log each decoded payload before dispatch |
 
 Config keys:
-| Key | Description |
-|---|---|
-| `ggwave-rx` | Path to `ggwave-rx` binary (default: `~/.local/bin/ggwave-rx`) |
-| `ggwave-cli` | Path to `ggwave-cli` binary (default: `~/.local/bin/ggwave-cli`) |
-| `remote` | If `True`, encode audio via the web API instead of local `ggwave-cli` |
-
-Raises `ValueError` if `ggwave-rx` is not found.
-
-If `ggwave-cli` is not found, forces `remote=True`.
+| Key | Default | Description |
+|---|---|---|
+| `protocol_id` | `1` | ggwave transmission protocol |
+| `volume` | `50` | TX volume 0–100 |
+| `sample_rate` | `48000` | Audio sample rate (Hz) |
+| `block_size` | `1024` | Capture block size (frames) |
+| `input_device` | `None` | sounddevice device index/name for capture |
+| `output_device` | `None` | sounddevice device index/name for playback |
 
 ### `run()`
 
-Spawns `ggwave-rx` via `pexpect` and reads stdout line by line. When a line matches `"Received sound data successfully: "`, extracts the payload and routes it to the matching opcode handler.
-
-Opcode matching: the payload is checked against each key in `OPCODES`; the first matching prefix wins, and the remainder of the payload (after the prefix) is passed to the handler.
+Opens a `sounddevice.RawInputStream` and feeds each block to `ggwave.decode()`. When a complete payload is decoded, routes it to the matching opcode handler (first prefix match in `OPCODES` wins; remainder of the payload after the prefix is passed to the handler).
 
 ### `emit(payload)`
 
-Transmit a string as a ggwave audio signal.
-
-- **Local mode** (`remote=False`): spawns `ggwave-cli`, sends the payload interactively
-- **Remote mode** (`remote=True`): calls `encode2wave()` to fetch a WAV from the ggwave web API, then plays it locally
-
-### `encode2wave(message, wav_path, protocolId=1, sampleRate=48000, volume=50, payloadLength=-1, useDSS=0) -> str`
-
-Encodes a message as a ggwave WAV file using the public web API at `https://ggwave-to-file.ggerganov.com/`. Writes the WAV to `wav_path` and returns the path.
-
-| Parameter | Description |
-|---|---|
-| `protocolId` | Transmission protocol (0=audible, 1=audible fast, etc.) |
-| `sampleRate` | Output sample rate (default 48000 Hz) |
-| `volume` | Output volume 0–100 |
-| `payloadLength` | Fixed-length encoding if positive; -1 = variable |
-| `useDSS` | Enable Doppler Spread Sensing |
+Encodes *payload* with `ggwave.encode()`, wraps the float32 PCM samples in a WAV container, and plays them via `ovos_utils.sound.play_audio`.
 
 ### `stop()`
 
-Sets `running = False`. The `run()` loop exits at the next readline.
+Sets `running = False`. The `run()` loop exits after the current `stream.read()` returns.
 
 ---
 

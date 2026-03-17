@@ -17,7 +17,7 @@ GGWave allows a Mind to "broadcast" a temporary password over audio. A satellite
 ```bash
 pip install -e hivemind-ggwave/
 ```
-> **Note**: Requires the `ggwave-cli` and `ggwave-rx` binaries from [ggerganov/ggwave](https://github.com/ggerganov/ggwave).
+> **Note**: Requires the `ggwave` Python package and `sounddevice`.
 
 ## Core Components
 

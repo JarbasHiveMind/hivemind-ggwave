@@ -1,4 +1,4 @@
-pexpect
-requests
+ggwave>=0.4.2
+sounddevice
 hivemind_bus_client
 ovos-utils

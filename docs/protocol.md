@@ -1,6 +1,6 @@
 # GGWave Protocol and Opcodes
 
-HiveMind GGWave defines a set of simple opcodes to manage the audio-based enrollment process. These are handled in the `GGWave.run()` loop by parsing incoming text from `ggwave-rx`.
+HiveMind GGWave defines a set of simple opcodes to manage the audio-based enrollment process. These are handled in the `GGWave.run()` loop by decoding audio via the `ggwave` Python bindings.
 
 - **Source File**: `hivemind-ggwave/hivemind_ggwave/__init__.py`
 - **Primary Class**: `GGWave(threading.Thread)`
@@ -20,13 +20,9 @@ The `GGWave` class uses a dictionary `self.OPCODES` to map incoming sound data t
 ## Core Methods
 
 ### 1. `run()`
-Spawns the `ggwave-rx` process using `pexpect` and listens for the "Received sound data successfully" marker. It then extracts the opcode and calls the appropriate handler.
-- **Source**: `GGWave.run()`
+Captures audio via `sounddevice.RawInputStream`, feeds each block to `ggwave.decode()`, and dispatches recognised payloads to the matching opcode handler.
+- **Source**: `GGWave.run()` — `hivemind_ggwave/__init__.py`
 
 ### 2. `emit(payload)`
-Sends a payload by either spawning `ggwave-cli` or generating a WAV file via the `encode2wave()` method and playing it.
-- **Source**: `GGWave.emit(payload)`
-
-### 3. `encode2wave(message, wav_path)`
-Encodes a text message into an audio WAV file using the `ggwave-to-file` web service (fallback implementation).
-- **Source**: `GGWave.encode2wave(message, wav_path)`
+Encodes *payload* with `ggwave.encode()`, wraps the float32 PCM samples in a WAV container, and plays it via `ovos_utils.sound.play_audio`.
+- **Source**: `GGWave.emit(payload)` — `hivemind_ggwave/__init__.py`
