@@ -1,38 +1,59 @@
-
 # HiveMind GGWave — Audit Report
 
 ## Test Status
 - **Status**: ⚠️ Partial Pass (77% coverage)
-- **Command**: `../.venv/bin/python -m pytest test/`
-- **Results**:
+- **Command**: `uv run pytest test/ -v`
+- **Results** (2026-03-17):
   - **Passed**: 30 tests
-  - **Skipped**: 9 tests (Integration tests requiring `ggwave-rx` binary)
+  - **Skipped**: 9 tests (integration tests requiring `ggwave-rx` binary)
   - **Failures**: 0
 
-## Code Quality & Findings
-### 1. Robust Opcode Logic
-- **Observation**: `TestGGWaveOpcodeLogic` and `TestGGWaveMasterNewOpcodes` verify that the protocol successfully parses and dispatches various pairing opcodes (HMHOST, HMHTTP, HMWSP).
-- **Reference**: `test/test_ggwave.py`.
+## Known Issues
 
-### 2. Dependency on External Binaries
-- **Issue**: Several core features (recording/decoding audio) cannot be tested without the `ggwave-rx` or `ggwave-cli` binaries installed on the host system.
-- **Evidence**: 9 tests skipped with reason "Requires ggwave-rx binary installed on the system".
-- **Action**: Consider providing a mock for the external process or a dockerized test environment with the binary pre-installed.
+### 1. No Authentication in Pairing Exchange
+- **Severity**: High
+- **Issue**: `HMPSWD:` and `HMKEY:` are transmitted in plaintext over audio. Any device within range can intercept both values.
+- **Citation**: `hivemind_ggwave/__init__.py:167-176`
 
-### 3. Deprecation Warnings
-- **Issue**: Extensive use of deprecated `ovos_utils` patterns and `distutils.spawn.find_executable`.
-- **Evidence**: `DeprecationWarning: Use shutil.which instead of find_executable` (50+ warnings).
-- **Action**: Modernize imports and process discovery logic.
+### 2. No Pairing Timeout on Slave
+- **Severity**: Medium
+- **Issue**: `GGWaveSlave` runs indefinitely if the master never completes the handshake. No escape mechanism.
+- **Citation**: `hivemind_ggwave/__init__.py:340-352`
+
+### 3. No Duplicate Key Detection
+- **Severity**: Medium
+- **Issue**: If a satellite re-pairs after reset, `add_client_callback` is invoked again without signalling that the key already exists. Creates duplicate entries in the hub database.
+- **Citation**: `hivemind_ggwave/__init__.py:260-266`
+
+### 4. Continuous Broadcasting After Client Registered
+- **Severity**: Medium
+- **Issue**: `GGWaveMaster` keeps broadcasting even after a client successfully registers. Caller must manually call `stop()`.
+- **Citation**: `hivemind_ggwave/__init__.py:270-284`
+
+### 5. Dependency on External Binaries
+- **Severity**: Medium
+- **Issue**: 9 integration tests require `ggwave-rx` or `ggwave-cli` binaries installed on the test host. Cannot run in standard CI without them.
+- **Evidence**: `test/test_ggwave.py` — `skipIf` guards on binary presence.
+
+### 6. `distutils` Deprecation
+- **Severity**: Low (currently suppressed by ovos_utils)
+- **Issue**: `distutils.spawn.find_executable` (used transitively via `ovos_utils.sound`) is removed in Python 3.12+. Produces 50+ `DeprecationWarning` messages in test output.
+- **Action**: Resolved upstream in `ovos_utils` when migrated to `shutil.which`.
+
+### 7. No Input Validation on Opcode Payloads
+- **Severity**: Low
+- **Issue**: Payloads decoded from audio are passed directly to handlers and `NodeIdentity` without sanitisation. A crafted acoustic signal could inject unexpected data.
+- **Citation**: `hivemind_ggwave/__init__.py:167-176`
 
 ## Documentation Status
-- [x] AGENTS.md Header Format
-- [x] QUICK_FACTS.md
-- [x] FAQ.md
-- [x] MAINTENANCE_REPORT.md
-- [x] AUDIT.md
-- [x] SUGGESTIONS.md
-- [x] docs/index.md
-
-## Technical Debt & Issues
-- **Binary Dependency**: Hard dependency on external C++ binaries makes the package difficult to test in generic CI environments.
-- **Outdated Utilities**: Reliance on `distutils` which is removed in Python 3.12+.
+- [x] `QUICK_FACTS.md`
+- [x] `FAQ.md`
+- [x] `MAINTENANCE_REPORT.md`
+- [x] `AUDIT.md`
+- [x] `SUGGESTIONS.md`
+- [x] `docs/index.md`
+- [x] `docs/api.md`
+- [x] `docs/protocol.md`
+- [x] `docs/master_slave.md`
+- [x] `docs/microphone.md`
+- [x] `docs/TODO.md`
