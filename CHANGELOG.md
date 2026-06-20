@@ -1,40 +1,14 @@
 # Changelog
 
-## [V0.0.1a5](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.1a5) (2023-09-15)
+## [0.0.3a1](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/0.0.3a1) (2026-06-20)
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.1a4...V0.0.1a5)
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.1...0.0.3a1)
 
-## [V0.0.1a4](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.1a4) (2023-09-15)
+**Merged pull requests:**
 
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.1a3...V0.0.1a4)
-
-## [V0.0.1a3](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.1a3) (2023-09-15)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.1a2...V0.0.1a3)
-
-## [V0.0.1a2](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.1a2) (2023-09-15)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.1a1...V0.0.1a2)
-
-## [V0.0.1a1](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.1a1) (2023-09-15)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.0a0...V0.0.1a1)
-
-## [V0.0.0a0](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.0a0) (2023-09-15)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.0a4...V0.0.0a0)
-
-## [V0.0.0a4](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.0a4) (2023-09-15)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.0a3...V0.0.0a4)
-
-## [V0.0.0a3](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.0a3) (2023-09-15)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/V0.0.0a2...V0.0.0a3)
-
-## [V0.0.0a2](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/V0.0.0a2) (2023-09-15)
-
-[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/8f4d9e4d03de58e502ae3c94c4def9514a5ec5af...V0.0.0a2)
+- build: modernize packaging \(pyproject\) + CI \(gh-automations\) [\#11](https://github.com/JarbasHiveMind/hivemind-ggwave/pull/11) ([JarbasAl](https://github.com/JarbasAl))
+- docs: zero-to-hero README and docs/ [\#9](https://github.com/JarbasHiveMind/hivemind-ggwave/pull/9) ([JarbasAl](https://github.com/JarbasAl))
+- Configure Renovate [\#1](https://github.com/JarbasHiveMind/hivemind-ggwave/pull/1) ([renovate[bot]](https://github.com/apps/renovate))
 
 
 
