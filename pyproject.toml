@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hivemind-ggwave"
+description = "data over sound for hivemind"
+readme = "README.md"
+authors = [{ name = "jarbasAI", email = "jarbasai@mailfence.com" }]
+license = "Apache-2.0"
+requires-python = ">=3.10"
+keywords = ["hivemind", "ggwave", "data-over-sound", "pairing"]
+dynamic = ["version", "dependencies"]
+
+[project.urls]
+Homepage = "https://github.com/JarbasHiveMind/hivemind-ggwave"
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools]
+packages = ["hivemind_ggwave"]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "hivemind_ggwave.version.__version__" }
+dependencies = { file = ["requirements.txt"] }
