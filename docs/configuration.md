@@ -1,18 +1,19 @@
 # Configuration
 
-## GGWave transmission
+## GGWave transceiver
 
-Audio transmission parameters are passed to the `GGWave` transceiver via a
-`config` dict:
+The `GGWave` class is configured via a `config` dict:
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `protocol_id` | `1` | GGWave transmission protocol id (trades speed for robustness). |
-| `volume` | `50` | Transmit volume, 0–100. |
-| `sample_rate` | `48000` | Audio sample rate in Hz. |
+| `ggwave-rx` | path of `ggwave-rx` on `$PATH`, else `~/.local/bin/ggwave-rx` | Path to the `ggwave-rx` binary used to listen for incoming audio. |
+| `ggwave-cli` | path of `ggwave-cli` on `$PATH`, else `~/.local/bin/ggwave-cli` | Path to the `ggwave-cli` binary used to emit audio locally. |
+| `remote` | `False` (forced to `True` if `ggwave-cli` is not found) | When set, audio is generated via the `ggwave-to-file` web service and played back instead of using the local `ggwave-cli` binary. |
 
 The same `config` dict is forwarded by `GGWaveMaster` and `GGWaveSlave` to the
-underlying transceiver, so transmission settings are shared across roles.
+underlying transceiver, so these settings are shared across roles. The GGWave
+protocol id, transmit volume, and sample rate used when generating audio
+remotely are fixed in code, not configurable.
 
 ## Master
 
@@ -21,7 +22,6 @@ underlying transceiver, so transmission settings are shared across roles.
 | pairing password | The code shown/broadcast as `HMPSWD:`. Generated if not supplied. |
 | host | The hub address emitted as `HMHOST:`. Auto-detected from the local IP if not supplied. |
 | silent mode | When enabled, the password is not auto-broadcast; the caller emits it on demand. |
-| client-registration callback | Invoked with the access key + password so the caller can persist the new client. |
 
 ## Slave
 
