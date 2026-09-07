@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.3a3](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/0.0.3a3) (2026-09-07)
+
+[Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/0.0.3a2...0.0.3a3)
+
+**Merged pull requests:**
+
+- docs: correct configuration.md to match actual config keys [\#15](https://github.com/JarbasHiveMind/hivemind-ggwave/pull/15) ([JarbasAl](https://github.com/JarbasAl))
+
 ## [0.0.3a2](https://github.com/JarbasHiveMind/hivemind-ggwave/tree/0.0.3a2) (2026-08-15)
 
 [Full Changelog](https://github.com/JarbasHiveMind/hivemind-ggwave/compare/0.0.3a1...0.0.3a2)
